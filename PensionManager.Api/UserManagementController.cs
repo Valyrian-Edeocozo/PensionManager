@@ -10,6 +10,8 @@ using PensionManager.PensionManger.Domain.Dtos;
 
 namespace PensionManager.PensionManager.Api;
 
+[Route("api/v1/usermanager")]
+[ApiController]
 public class UserManagementController(UserManager<User> userManager, ApplicationDbContext context) : ApiControllerBase
 {
     private readonly UserManager<User> _userManager = userManager;
@@ -40,8 +42,8 @@ public class UserManagementController(UserManager<User> userManager, Application
         user.LastName = model.LastName ?? user.LastName;
         user.DateOfBirth = model.DateOfBirth ?? user.DateOfBirth;
         user.Address = model.Address ?? user.Address;
-        user.EmployerId = model.EmployerId ?? user.EmployerId;
-        user.PensionPlanId = model.PensionPlanId ?? user.PensionPlanId;
+        user.EmployerId = model.EmployerId;
+        user.PensionPlanId = model.PensionPlanId;
         user.DateModified = DateTime.Now;
 
         // Save changes
@@ -56,6 +58,7 @@ public class UserManagementController(UserManager<User> userManager, Application
 
     }
 
+    [HttpDelete("delete")]
     public async Task<IActionResult> DeleteUser()
     {
          // Get the current user's ID from the JWT token
@@ -89,6 +92,7 @@ public class UserManagementController(UserManager<User> userManager, Application
         return Ok(new { Success = true, Message = "User deleted successfully." });
     }
 
+    [HttpGet("getuser")]
     public async Task<IActionResult> GetUser()
     {
         // Get all users who are not soft-deleted and include their pension plan details
@@ -100,13 +104,13 @@ public class UserManagementController(UserManager<User> userManager, Application
                 pensionPlan => pensionPlan.PensionPlanId,
                 (user, pensionPlan) => new UserDto
                 {
-                    Id = user.Id,
+                    Id = user.UserId,
                     FirstName = user.FirstName,
                     LastName = user.LastName,
                     Email = user.Email,
                     DateOfBirth = user.DateOfBirth,
                     NationalId = user.NationalId,
-                    Address = user.Address,
+                    //Address = user.Address,
                     EmployerId = user.EmployerId,
                     PensionPlanId = user.PensionPlanId,
                     PensionPlanDetails = new PensionPlanDto

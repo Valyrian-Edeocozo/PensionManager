@@ -4,6 +4,7 @@ namespace PensionManager.PensionManger.Domain;
 
 public class Address : BaseEntity
 {
+    public Guid AddressId { get; set; }
     public string Street { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
     public string State { get; set; } = string.Empty;

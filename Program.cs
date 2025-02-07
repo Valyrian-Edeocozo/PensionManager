@@ -1,37 +1,43 @@
 using System.Text;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using PensionManager.PensionManager.Infrastructure;
 using PensionManager.PensionManger.Domain;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using Hangfire;
+using Hangfire.MemoryStorage;
+using PensionManager.PensionManager.Application.BackgroundJob;
+using PensionManager.PensionManger.Domain.Dtos;
+using FluentValidation;
+using PensionManager.PensionManager.Application.Interfaces;
+using PensionManager.PensionManager.Application;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddControllers();
+
 // Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-var app = builder.Build();
+// Configure SQL Server
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(connectionString)
+);
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-app.UseHttpsRedirection();
-
+// Configure Identity
 builder.Services.AddIdentity<User, IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
-// Configure SQL Server
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
-);
+// Configure Dependency Injection
+builder.Services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
+builder.Services.AddValidatorsFromAssemblyContaining<RegisterDtoValidation>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IContributionService, ContributionService>();
+
 
 // Configure JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("Jwt");
@@ -56,25 +62,36 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-var summaries = new[]
+// Configure Hangfire with MemoryStorage
+builder.Services.AddHangfire(config =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    config.UseMemoryStorage();
+});
+builder.Services.AddHangfireServer();
 
-app.MapGet("/weatherforecast", () =>
+// Build the application
+var app = builder.Build();
+
+app.UseHangfireDashboard();
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.MapControllers();
+
+app.UseHttpsRedirection();
+// app.UseAuthentication();
+// app.UseAuthorization();
+
+// Instead of using the static RecurringJob API here, retrieve IRecurringJobManager from DI:
+var recurringJobManager = app.Services.GetRequiredService<IRecurringJobManager>();
+recurringJobManager.AddOrUpdate<PensionJob>("InterestId",
+    job => job.CalculateInterest(),
+    Cron.Minutely);
 
 app.Run();
 
